@@ -19,7 +19,7 @@ V2 adds credit accounts and an append only, double entry ledger. See README.md f
 - [x] The right accounts are affected, and other members are untouched.
 - [x] Insufficient credits are refused with 409.
 - [x] Failures leave no partial updates.
-- [ ] CI passes on the V2 pull request.
+- [x] CI passes on the V2 pull request.
 
 ## Still not included
 
