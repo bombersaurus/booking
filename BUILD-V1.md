@@ -1,86 +1,42 @@
-# v1 — make it work
+# V1: basic bookings
 
-**Goal:** create a session and book it, through Swagger, against real Postgres.
+V1 is implemented. See README.md for startup and Swagger instructions and PLAN.md for the agreed three-stage scope.
 
-**Not in v1:** ledger, locking, idempotency, waitlist, JWT, the scheduled job. Resist all of them. v1 exists so that when you add locking in v3 you're changing code you understand.
+The project uses Java 21 and Spring Boot 4.1.1 with springdoc 3.1.1. The old Spring Boot 3 / springdoc 2 setup instructions no longer apply.
 
----
+## Implemented
 
-## Setup
+- ClassSession entity, repository, service, record DTOs and class-listing controller.
+- Validated class creation.
+- Booking creation with a basic capacity check and active-booking uniqueness.
+- Cancellation with a timestamp, repeated cancellation and rebooking.
+- ProblemDetail responses for invalid input, missing records, duplicates and full classes, and for framework errors such as unknown endpoints, non-numeric IDs and unsupported methods.
+- GET by ID for classes and bookings, so every 201 `Location` header can be fetched.
+- Timestamps kept at PostgreSQL's microsecond precision, so create responses match what is read back.
+- Read-only demo-user listing and booking history.
+- PostgreSQL integration tests, Swagger, README and a GitHub Actions workflow.
 
-**1. Generate the project** at [start.spring.io](https://start.spring.io):
-
-- Maven, Java 21, Spring Boot 3.3.x
-- Group `com.yourname`, Artifact `booking`
-- Dependencies: **Spring Web**, **Spring Data JPA**, **PostgreSQL Driver**, **Flyway Migration**, **Validation**
-
-Then add springdoc to `pom.xml` manually (it isn't on start.spring.io):
-
-```xml
-<dependency>
-    <groupId>org.springdoc</groupId>
-    <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
-    <version>2.6.0</version>
-</dependency>
-```
-
-**2. Drop in the files from this folder**, overwriting the generated `application.properties` (delete it — you're using `application.yml`).
-
-**3. Start the database:** `docker compose up -d`
-
-**4. Run the app.** It should start, Flyway should apply `V1__baseline.sql`, and Hibernate should validate cleanly. It won't yet, because you have no entities — that's step one of the actual work.
-
-Check the schema landed: `docker exec -it booking-db psql -U booking -d booking -c '\dt'`
-
----
-
-## What you write
-
-Four packages, and roughly this order. Get each one running before starting the next.
-
-**1. `catalog` — read-only first.**
-`ClassSession` entity, `ClassSessionRepository extends JpaRepository`, a controller with `GET /api/v1/classes`. Return a record DTO, not the entity.
-
-Stop here and confirm the seeded sessions come back through Swagger. That's your whole stack proven end to end.
-
-**2. `catalog` — writes.** `POST /api/v1/classes` with `@Valid` on the request record. No auth yet, anyone can create one.
-
-**3. `booking` — the naive version.** `Booking` entity, repository, and a service method that:
-
-- loads the session
-- counts existing `CONFIRMED` bookings
-- if count < capacity, saves a `CONFIRMED` booking; otherwise returns an error
-
-`@Transactional` on the service method, not the controller. This is deliberately racy. Don't fix it. v3 is where you break it on purpose and watch it fail.
-
-**4. `booking` — cancellation.** `DELETE /api/v1/bookings/{id}` sets status `CANCELLED` and stamps `cancelled_at`.
-
-**5. `shared` — error handling.** One `@RestControllerAdvice` mapping your domain exceptions to `ProblemDetail`. Session not found → 404. Session full → 409. Validation failure → 400. No stack traces in responses.
-
----
+The original Flyway baseline is unchanged. A second migration adds Carol as a third demo user, so the two-seat / three-user scenario can be demonstrated entirely through Swagger. Migration V2 is a schema sequence number, not the credit-ledger product version.
 
 ## Definition of done
 
-Through Swagger, without touching the database directly:
+- [x] List and create sessions.
+- [x] Book as an existing demo user.
+- [x] Reject duplicate active bookings with 409.
+- [x] Cancel and rebook.
+- [x] Refuse a third booking for a two-seat session under sequential requests.
+- [x] Run automated integration checks against PostgreSQL.
+- [x] Document the demo and configure CI.
+- [x] Run the workflow on GitHub after publishing the changes.
 
-- List sessions
-- Create a session
-- Book it as a user
-- Book it again as the same user → the unique index rejects it, and your error handler turns that into a clean 409 rather than a 500
-- Cancel, then rebook successfully
-- Fill a 2-seat session and get a sensible refusal on the third booking
+V1 does not include credits, locking, authentication, idempotency, waitlists or scheduled settlement. The capacity count followed by insertion is intentionally vulnerable to concurrent requests; V3 will reproduce and fix that race.
 
-Commit after each of the five steps above. A commit history that shows the thing being built in stages is worth having when someone asks whether you wrote it.
+## Review before V2
 
----
+1. What does the service's @Transactional method do, and when does it commit?
+2. How does Spring supply a service to its controller without the controller constructing it?
+3. Why does Hibernate validate the schema while Flyway changes it?
+4. How can two concurrent requests both see one remaining seat and both create a booking?
+5. Why does a cancelled booking remain in the database?
 
-## Before you move to v2
-
-Close the laptop and answer these out loud. If any of them is fuzzy, that's the gap — reread that bit rather than pushing on.
-
-1. What does `@Transactional` on your booking service method actually do? When does the transaction start and when does it commit?
-2. You never call `new BookingService(...)`. So how does the controller get one?
-3. `ddl-auto: validate` — what would have gone wrong if it were `update`?
-4. Your booking method reads a count and then writes a row. Describe, concretely, how two simultaneous requests can put 3 people in a 2-seat class.
-
-Question 4 is the whole project. If you can describe the failure precisely before you've seen it, v3 will go quickly.
+Understand the working code and commit the reviewed V1 checkpoint before adding credit movements.
