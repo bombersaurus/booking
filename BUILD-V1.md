@@ -27,7 +27,7 @@ The original Flyway baseline is unchanged. A second migration adds Carol as a th
 - [x] Refuse a third booking for a two-seat session under sequential requests.
 - [x] Run automated integration checks against PostgreSQL.
 - [x] Document the demo and configure CI.
-- [ ] Run the workflow on GitHub after publishing the changes.
+- [x] Run the workflow on GitHub after publishing the changes.
 
 V1 does not include credits, locking, authentication, idempotency, waitlists or scheduled settlement. The capacity count followed by insertion is intentionally vulnerable to concurrent requests; V3 will reproduce and fix that race.
 

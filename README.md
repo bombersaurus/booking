@@ -97,7 +97,7 @@ Testcontainers starts a separate PostgreSQL 16 container, applies the real Flywa
 
 The integration suite covers listing, validated creation, fetching created resources from their `Location` headers, booking, duplicate rejection, cancellation and rebooking, two-seat capacity, missing records, malformed requests, framework errors as problem details, past/cancelled sessions, database uniqueness enforcement, transaction rollback and Swagger/OpenAPI. GitHub Actions runs the same Maven verification on pushes and pull requests.
 
-Local verification on 10 September 2026: **13 tests passed, 0 failures, 0 errors, 0 skipped**, against PostgreSQL 16, and a clean `verify` packaged the runnable JAR successfully. The workflow is configured but has not yet run on GitHub because these changes have not been pushed.
+Local verification on 10 September 2026: **13 tests passed, 0 failures, 0 errors, 0 skipped**, against PostgreSQL 16, and a clean `verify` packaged the runnable JAR successfully. The same 13 tests passed in the first GitHub Actions run, on pull request #1.
 
 ## Revised roadmap
 
