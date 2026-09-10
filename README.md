@@ -2,7 +2,7 @@
 
 A small Java backend built in three stages to demonstrate booking transactions and, later, credit correctness under concurrent requests.
 
-**Current stage: V1, basic bookings.** Java 21, Spring Boot 4.1.1, PostgreSQL 16, Flyway, Maven and Swagger UI.
+**Current stage: V2, credits.** Java 21, Spring Boot 4.1.1, PostgreSQL 16, Flyway, Maven and Swagger UI.
 
 ## Run locally
 
@@ -30,6 +30,9 @@ Use **Try it out**, then **Execute** on each operation.
 7. `DELETE /api/v1/bookings/{id}`: cancel Alice's booking. Expect **204**.
 8. Book as Bob: expect **201**. Cancel Bob, then rebook as Alice to demonstrate cancellation and rebooking.
 9. `GET /api/v1/users/{userId}/bookings`: inspect confirmed and cancelled history.
+10. `GET /api/v1/users/{userId}/credits`: every member starts with 5 credits from a `GRANT`. Alice's statement shows each booking as a `RESERVATION` of the class's credit cost and each cancellation as a `REFUND`.
+11. Create a class with `creditCost` 6 and book it as Carol: expect **409** because she has only 5 credits. Her balance and booking history are unchanged.
+12. `POST /api/v1/users/{userId}/credits` with `{"amount": 1}`: Carol now has 6. Book again: expect **201** and a balance of 0.
 
 Create-class example:
 
@@ -51,17 +54,20 @@ Book example (replace both IDs with the returned values):
 }
 ```
 
-Seed dates are relative to the **first database migration**, so existing seeded classes eventually become past sessions. Create a new future class through Swagger when that happens. No database reset is needed. V1 records credit cost but does not charge credits.
+Seed dates are relative to the **first database migration**, so existing seeded classes eventually become past sessions. Create a new future class through Swagger when that happens. No database reset is needed.
+
+Starting V2 applies migration `V3__credit_ledger.sql` to the development database. It adds the credit tables and grants each existing member 5 credits. Bookings made before V2 have no reservation, so cancelling them refunds nothing. (Flyway numbers migrations separately from the product stages.)
 
 ## API behaviour
 
 | Operation | Result |
 |---|---|
 | List classes / demo users / a user's bookings, or view one class or booking | 200 |
+| View a member's credits, or add 1 to 100 credits | 200 |
 | Create a future class / booking | 201 |
 | Cancel an existing booking | 204; repeating cancellation preserves its original timestamp |
 | Missing user, class or booking, or unknown endpoint | 404 |
-| Duplicate active booking, full class, past or cancelled class | 409 |
+| Duplicate active booking, full class, past or cancelled class, or not enough credits | 409 |
 | Invalid fields, invalid or non-numeric IDs, or malformed JSON body | 400 |
 | Unsupported HTTP method / content type | 405 / 415 |
 
@@ -73,15 +79,30 @@ Errors, including framework errors, use `application/problem+json` with a status
 src/main/java/com/nahid/booking/
   catalog/   Class sessions: entity, repository, service, DTOs and controller
   booking/   Booking creation, cancellation and history
+  credits/   Credit accounts, ledger transactions and entries, statements and top ups
   users/     Read-only demo users
   shared/    Error responses, UTC clock and OpenAPI configuration
 ```
 
 Controllers accept and return record DTOs. Services own transactions and convert entities to responses before leaving the service layer. Flyway owns schema changes; Hibernate validates mappings instead of changing the database. The original baseline migration is preserved.
 
-The booking service deliberately counts confirmed bookings and then inserts a booking without locking. This works for sequential requests but **can exceed capacity under concurrent requests**. The database's partial unique index still rejects two active bookings for the same user and class. V3 will reproduce and fix the capacity race; V1 does not claim concurrency safety.
+Nothing is locked yet. The booking service counts confirmed bookings and then inserts, and the credit service reads a balance, changes it in memory and writes it back. This is correct for sequential requests but **can exceed capacity or lose a balance update under concurrent requests**. The database's partial unique index still rejects two active bookings for the same user and class. V3 will reproduce and fix both races; V2 does not claim concurrency safety.
 
-Cancellation keeps the original booking and marks it cancelled. It frees capacity for a new booking. There is no cutoff fee or background completion process in V1.
+Cancellation keeps the original booking and marks it cancelled. It frees capacity and refunds the reserved credits in full. There is no cutoff fee or background completion process.
+
+## Credit ledger
+
+Credits move between accounts in balanced transactions. Each transaction has ledger entries that sum to zero:
+
+| Transaction | From | To |
+|---|---|---|
+| `GRANT` (seed) or `TOP_UP` | `ISSUED` | member |
+| `RESERVATION` (booking) | member | `RESERVED` |
+| `REFUND` (cancellation) | `RESERVED` | member |
+
+`ISSUED` is the source of all credits, so it is the only account with a negative balance. Each account also stores a running `balance`, updated in the same database transaction as its entries.
+
+PostgreSQL enforces the rules even if application code is wrong. Triggers reject any update or delete of ledger rows, and a deferred trigger rejects, at commit, any transaction whose entries do not sum to zero. Member and reserved balances cannot go below zero, and each booking can have at most one reservation and one refund. A booking and its reservation share one database transaction, so a failure leaves neither behind.
 
 ## Tests
 
@@ -95,9 +116,9 @@ On macOS/Linux use `./mvnw verify`.
 
 Testcontainers starts a separate PostgreSQL 16 container, applies the real Flyway migration, and runs the API on a random HTTP port. Test fixtures are reset only in that disposable database; the Compose development database is not used. Docker must be available: tests fail rather than silently skip database checks.
 
-The integration suite covers listing, validated creation, fetching created resources from their `Location` headers, booking, duplicate rejection, cancellation and rebooking, two-seat capacity, missing records, malformed requests, framework errors as problem details, past/cancelled sessions, database uniqueness enforcement, transaction rollback and Swagger/OpenAPI. GitHub Actions runs the same Maven verification on pushes and pull requests.
+The integration suite covers listing, validated creation, fetching created resources from their `Location` headers, booking, duplicate rejection, cancellation and rebooking, two-seat capacity, missing records, malformed requests, framework errors as problem details, past/cancelled sessions, database uniqueness enforcement, transaction rollback and Swagger/OpenAPI. For credits it covers reservations and refunds, insufficient credits with full rollback, top ups and their validation, bookings made before credits existed, and append only and balanced ledger enforcement. After every test it checks that each transaction sums to zero and each stored balance equals its ledger entries. GitHub Actions runs the same Maven verification on pushes and pull requests.
 
-Local verification on 10 September 2026: **13 tests passed, 0 failures, 0 errors, 0 skipped**, against PostgreSQL 16, and a clean `verify` packaged the runnable JAR successfully. The same 13 tests passed in the first GitHub Actions run, on pull request #1.
+Local verification of V2 on 10 September 2026: **19 tests passed, 0 failures, 0 errors, 0 skipped**, against PostgreSQL 16, including migration 3 and its seed grants. V1's 13 tests also passed on GitHub Actions in pull request #1.
 
 ## Revised roadmap
 
@@ -106,4 +127,4 @@ Local verification on 10 September 2026: **13 tests passed, 0 failures, 0 errors
 - **V3:** Demonstrate concurrent booking/spending failures, then add consistent database locking and record measured before/after results.
 - **Optional:** Idempotency, login and permissions, waitlists, scheduled settlement and hosting.
 
-Build and explain one stage at a time. Test outcomes from V1 are not evidence that the unbuilt credit or concurrency features work.
+Build and explain one stage at a time. The V2 tests send requests one at a time, so passing them is not evidence of concurrency safety; that is V3.

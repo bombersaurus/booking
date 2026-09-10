@@ -2,6 +2,7 @@ package com.nahid.booking.booking;
 
 import com.nahid.booking.catalog.ClassSession;
 import com.nahid.booking.catalog.ClassSessionRepository;
+import com.nahid.booking.credits.CreditService;
 import com.nahid.booking.shared.ApiException;
 import com.nahid.booking.users.UserRepository;
 import org.springframework.http.HttpStatus;
@@ -15,13 +16,15 @@ public class BookingService {
     private final BookingRepository bookings;
     private final ClassSessionRepository sessions;
     private final UserRepository users;
+    private final CreditService credits;
     private final Clock clock;
 
     public BookingService(BookingRepository bookings, ClassSessionRepository sessions,
-                          UserRepository users, Clock clock) {
+                          UserRepository users, CreditService credits, Clock clock) {
         this.bookings = bookings;
         this.sessions = sessions;
         this.users = users;
+        this.credits = credits;
         this.clock = clock;
     }
 
@@ -37,14 +40,17 @@ public class BookingService {
                 request.userId(), session.getId(), BookingStatus.CANCELLED)) {
             throw new ApiException(HttpStatus.CONFLICT, "This user already has an active booking for this class.");
         }
-        // V1 deliberately uses a count followed by an insert. V3 will demonstrate
+        // Still a count followed by an insert, with no locking. V3 will demonstrate
         // the race between these statements and introduce fixed-order row locks.
         if (bookings.countByClassSessionIdAndStatus(session.getId(), BookingStatus.CONFIRMED)
                 >= session.getCapacity()) {
             throw new ApiException(HttpStatus.CONFLICT, "This class is full.");
         }
-        return BookingResponse.from(bookings.saveAndFlush(
-                new Booking(request.userId(), session.getId(), clock.instant())));
+        Booking booking = bookings.saveAndFlush(new Booking(request.userId(), session.getId(), clock.instant()));
+        // The reservation joins this transaction. If it fails, for example because
+        // the member lacks credits, the booking insert above is rolled back too.
+        credits.reserve(request.userId(), booking.getId(), session.getCreditCost());
+        return BookingResponse.from(booking);
     }
 
     @Transactional(readOnly = true)
@@ -61,6 +67,7 @@ public class BookingService {
             return;
         }
         booking.cancel(clock.instant());
+        credits.refund(booking.getId());
     }
 
     @Transactional(readOnly = true)
@@ -76,4 +83,3 @@ public class BookingService {
         }
     }
 }
-
