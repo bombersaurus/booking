@@ -31,7 +31,10 @@ public class BookingService {
     @Transactional
     public BookingResponse create(CreateBookingRequest request) {
         requireUser(request.userId());
-        ClassSession session = sessions.findById(request.classSessionId())
+        // Lock order for every write: the class or booking row first, then credit
+        // accounts in ascending id order (see CreditService). Locking the class makes
+        // concurrent bookings for it queue here, one transaction at a time.
+        ClassSession session = sessions.findByIdForUpdate(request.classSessionId())
                 .orElseThrow(() -> ApiException.notFound("Class session not found."));
         if (session.getCancelledAt() != null || !session.getStartsAt().isAfter(clock.instant())) {
             throw new ApiException(HttpStatus.CONFLICT, "This class is no longer open for booking.");
@@ -40,8 +43,8 @@ public class BookingService {
                 request.userId(), session.getId(), BookingStatus.CANCELLED)) {
             throw new ApiException(HttpStatus.CONFLICT, "This user already has an active booking for this class.");
         }
-        // Still a count followed by an insert, with no locking. V3 will demonstrate
-        // the race between these statements and introduce fixed-order row locks.
+        // The count is exact: the next booking for this class is waiting on the class
+        // lock and will only count once this transaction has committed or rolled back.
         if (bookings.countByClassSessionIdAndStatus(session.getId(), BookingStatus.CONFIRMED)
                 >= session.getCapacity()) {
             throw new ApiException(HttpStatus.CONFLICT, "This class is full.");
@@ -61,7 +64,9 @@ public class BookingService {
 
     @Transactional
     public void cancel(Long id) {
-        Booking booking = bookings.findById(id)
+        // Concurrent cancellations of one booking queue on this lock. The later ones
+        // then read CANCELLED and return without a second refund.
+        Booking booking = bookings.findByIdForUpdate(id)
                 .orElseThrow(() -> ApiException.notFound("Booking not found."));
         if (booking.getStatus() == BookingStatus.CANCELLED) {
             return;

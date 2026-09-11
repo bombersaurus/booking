@@ -1,8 +1,21 @@
 # Booking and Credit Ledger API
 
-A small Java backend built in three stages to demonstrate booking transactions and, later, credit correctness under concurrent requests.
+A small Java backend built in three stages to demonstrate booking transactions and credit correctness under concurrent requests.
 
-**Current stage: V2, credits.** Java 21, Spring Boot 4.1.1, PostgreSQL 16, Flyway, Maven and Swagger UI.
+**Current stage: V3, concurrency.** Java 21, Spring Boot 4.1.1, PostgreSQL 16, Flyway, Maven and Swagger UI.
+
+## Results at a glance
+
+Requests released at the same instant, 20 rounds per scenario, against real PostgreSQL. "Before" is the unlocked V2 code and "after" is V3's ordered row locking. Method, latency figures and trade-offs are in [BUILD-V3.md](BUILD-V3.md).
+
+| Scenario | Before | After |
+|---|---|---|
+| 25 members book one 5 seat class | Oversold in 20 of 20 rounds, up to 13 bookings | Exactly 5 bookings in every round |
+| One member with 5 credits books 15 classes | Overspent in 20 of 20 rounds, all 15 accepted | Exactly 5 accepted in every round |
+| 10 cancellations of one booking | 180 of 200 requests failed with 500 | All 204, one refund |
+| Stored balances compared with the ledger | Lost updates in every booking round | Always equal |
+
+A 100 round soak of the locked code, about 6,000 concurrent requests, found no violations and no server errors. Correctness costs throughput: in the capacity scenario, median latency rises from 31.6 ms to 68.9 ms because bookings for one class now run one at a time.
 
 ## Run locally
 
@@ -86,7 +99,7 @@ src/main/java/com/nahid/booking/
 
 Controllers accept and return record DTOs. Services own transactions and convert entities to responses before leaving the service layer. Flyway owns schema changes; Hibernate validates mappings instead of changing the database. The original baseline migration is preserved.
 
-Nothing is locked yet. The booking service counts confirmed bookings and then inserts, and the credit service reads a balance, changes it in memory and writes it back. This is correct for sequential requests but **can exceed capacity or lose a balance update under concurrent requests**. The database's partial unique index still rejects two active bookings for the same user and class. V3 will reproduce and fix both races; V2 does not claim concurrency safety.
+Every write takes row locks (`SELECT ... FOR UPDATE`) in one fixed order: first the class when booking, or the booking when cancelling, then credit accounts one at a time in ascending id order. Locking the class makes the capacity count exact. Locking an account before reading its balance prevents double spending and lost updates. Locking the booking makes duplicate cancellations wait and then return without a second refund. Because every path locks in the same order, transactions queue instead of deadlocking. The database's partial unique index still rejects two active bookings for the same user and class as a final safeguard.
 
 Cancellation keeps the original booking and marks it cancelled. It frees capacity and refunds the reserved credits in full. There is no cutoff fee or background completion process.
 
@@ -116,9 +129,15 @@ On macOS/Linux use `./mvnw verify`.
 
 Testcontainers starts a separate PostgreSQL 16 container, applies the real Flyway migration, and runs the API on a random HTTP port. Test fixtures are reset only in that disposable database; the Compose development database is not used. Docker must be available: tests fail rather than silently skip database checks.
 
-The integration suite covers listing, validated creation, fetching created resources from their `Location` headers, booking, duplicate rejection, cancellation and rebooking, two-seat capacity, missing records, malformed requests, framework errors as problem details, past/cancelled sessions, database uniqueness enforcement, transaction rollback and Swagger/OpenAPI. For credits it covers reservations and refunds, insufficient credits with full rollback, top ups and their validation, bookings made before credits existed, and append only and balanced ledger enforcement. After every test it checks that each transaction sums to zero and each stored balance equals its ledger entries. GitHub Actions runs the same Maven verification on pushes and pull requests.
+The integration suite covers listing, validated creation, fetching created resources from their `Location` headers, booking, duplicate rejection, cancellation and rebooking, two-seat capacity, missing records, malformed requests, framework errors as problem details, past/cancelled sessions, database uniqueness enforcement, transaction rollback and Swagger/OpenAPI. For credits it covers reservations and refunds, insufficient credits with full rollback, top ups and their validation, bookings made before credits existed, and append only and balanced ledger enforcement. After every test it checks that each transaction sums to zero and each stored balance equals its ledger entries.
 
-Local verification of V2 on 10 September 2026: **19 tests passed, 0 failures, 0 errors, 0 skipped**, against PostgreSQL 16, including migration 3 and its seed grants. V1's 13 tests also passed on GitHub Actions in pull request #1.
+`ConcurrencyIntegrationTest` covers the three races above and prints a summary per scenario (lines starting with `[race]`). To run only those, or a longer soak:
+
+```powershell
+.\mvnw.cmd test -Dtest=ConcurrencyIntegrationTest "-Drace.rounds=100"
+``` GitHub Actions runs the same Maven verification on pushes and pull requests.
+
+Local verification of V3 on 10 September 2026: **22 tests passed, 0 failures, 0 errors, 0 skipped**, against PostgreSQL 16. V1 and V2 also passed on GitHub Actions in pull requests #1 and #2.
 
 ## Revised roadmap
 
@@ -127,4 +146,4 @@ Local verification of V2 on 10 September 2026: **19 tests passed, 0 failures, 0 
 - **V3:** Demonstrate concurrent booking/spending failures, then add consistent database locking and record measured before/after results.
 - **Optional:** Idempotency, login and permissions, waitlists, scheduled settlement and hosting.
 
-Build and explain one stage at a time. The V2 tests send requests one at a time, so passing them is not evidence of concurrency safety; that is V3.
+Build and explain one stage at a time. The race tests show that these specific races no longer occur under the tested load; they are evidence, not proof.
