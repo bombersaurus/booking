@@ -47,7 +47,7 @@ No path takes a class or booking lock after an account lock, and accounts are al
 
 One detail matters with JPA. Account ids are looked up with id only queries before locking. If an account entity were loaded first, the locking query would return that already loaded, stale copy, and the lost update would come back.
 
-## Trade-offs
+## Tradeoffs
 
 - **Hot row.** Every booking and refund locks the single `RESERVED` account, so all credit movements queue on one row, even for different classes. It is held only for the ledger inserts and the commit. The alternatives are to stop storing a balance on system accounts and derive it from the ledger, to split `RESERVED` per class, or to apply system account changes as atomic increments.
 - **Pessimistic rather than optimistic locking.** Optimistic version checks would make losing requests fail and retry. Under this kind of contention, where many requests aim at one seat pool, queueing is simpler and wastes no work.
@@ -61,8 +61,8 @@ One detail matters with JPA. Account ids are looked up with id only queries befo
 - [x] Double spending prevented with a consistent lock order.
 - [x] Duplicate refunds prevented, with no server errors.
 - [x] Atomic booking and credit rollback, and ledger consistency, verified against real PostgreSQL.
-- [x] Actual results recorded, with trade-offs explained.
-- [ ] CI passes on the V3 pull request.
+- [x] Actual results recorded, with tradeoffs explained.
+- [x] CI passes on the V3 pull request.
 
 ## Review
 

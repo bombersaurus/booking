@@ -2,11 +2,11 @@
 
 A small Java backend built in three stages to demonstrate booking transactions and credit correctness under concurrent requests.
 
-**Current stage: V3, concurrency.** Java 21, Spring Boot 4.1.1, PostgreSQL 16, Flyway, Maven and Swagger UI.
+**Status: V1, V2 and V3 complete.** Java 21, Spring Boot 4.1.1, PostgreSQL 16, Flyway, Maven and Swagger UI.
 
 ## Results at a glance
 
-Requests released at the same instant, 20 rounds per scenario, against real PostgreSQL. "Before" is the unlocked V2 code and "after" is V3's ordered row locking. Method, latency figures and trade-offs are in [BUILD-V3.md](BUILD-V3.md).
+Requests released at the same instant, 20 rounds per scenario, against real PostgreSQL. "Before" is the unlocked V2 code and "after" is V3's ordered row locking. Method, latency figures and tradeoffs are in [BUILD-V3.md](BUILD-V3.md).
 
 | Scenario | Before | After |
 |---|---|---|
@@ -34,7 +34,7 @@ Database settings can be overridden with `DB_URL`, `DB_USERNAME` and `DB_PASSWOR
 
 Use **Try it out**, then **Execute** on each operation.
 
-1. `GET /api/v1/users`: find Alice, Bob and Carol's IDs. Carol also lets you demonstrate three requests against a two-seat class.
+1. `GET /api/v1/users`: find Alice, Bob and Carol's IDs. Carol also lets you demonstrate three requests against a two seat class.
 2. `GET /api/v1/classes`: see Spin, Yoga and HIIT.
 3. `POST /api/v1/classes`: create a future session with capacity 1. For example, use the body below, replacing the date with a future UTC date.
 4. `POST /api/v1/bookings`: supply Alice's user ID and the new class ID. Expect **201** and a confirmed booking.
@@ -47,7 +47,7 @@ Use **Try it out**, then **Execute** on each operation.
 11. Create a class with `creditCost` 6 and book it as Carol: expect **409** because she has only 5 credits. Her balance and booking history are unchanged.
 12. `POST /api/v1/users/{userId}/credits` with `{"amount": 1}`: Carol now has 6. Book again: expect **201** and a balance of 0.
 
-Create-class example:
+Create class example:
 
 ```json
 {
@@ -81,7 +81,7 @@ Starting V2 applies migration `V3__credit_ledger.sql` to the development databas
 | Cancel an existing booking | 204; repeating cancellation preserves its original timestamp |
 | Missing user, class or booking, or unknown endpoint | 404 |
 | Duplicate active booking, full class, past or cancelled class, or not enough credits | 409 |
-| Invalid fields, invalid or non-numeric IDs, or malformed JSON body | 400 |
+| Invalid fields, invalid or non numeric IDs, or malformed JSON body | 400 |
 | Unsupported HTTP method / content type | 405 / 415 |
 
 Errors, including framework errors, use `application/problem+json` with a status and readable detail. The `Location` header of a 201 response can be fetched with GET. Field validation errors include an `errors` array. Responses do not expose stack traces or database statements.
@@ -93,7 +93,7 @@ src/main/java/com/nahid/booking/
   catalog/   Class sessions: entity, repository, service, DTOs and controller
   booking/   Booking creation, cancellation and history
   credits/   Credit accounts, ledger transactions and entries, statements and top ups
-  users/     Read-only demo users
+  users/     Read only demo users
   shared/    Error responses, UTC clock and OpenAPI configuration
 ```
 
@@ -129,21 +129,23 @@ On macOS/Linux use `./mvnw verify`.
 
 Testcontainers starts a separate PostgreSQL 16 container, applies the real Flyway migration, and runs the API on a random HTTP port. Test fixtures are reset only in that disposable database; the Compose development database is not used. Docker must be available: tests fail rather than silently skip database checks.
 
-The integration suite covers listing, validated creation, fetching created resources from their `Location` headers, booking, duplicate rejection, cancellation and rebooking, two-seat capacity, missing records, malformed requests, framework errors as problem details, past/cancelled sessions, database uniqueness enforcement, transaction rollback and Swagger/OpenAPI. For credits it covers reservations and refunds, insufficient credits with full rollback, top ups and their validation, bookings made before credits existed, and append only and balanced ledger enforcement. After every test it checks that each transaction sums to zero and each stored balance equals its ledger entries.
+The integration suite covers listing, validated creation, fetching created resources from their `Location` headers, booking, duplicate rejection, cancellation and rebooking, two seat capacity, missing records, malformed requests, framework errors as problem details, past/cancelled sessions, database uniqueness enforcement, transaction rollback and Swagger/OpenAPI. For credits it covers reservations and refunds, insufficient credits with full rollback, top ups and their validation, bookings made before credits existed, and append only and balanced ledger enforcement. After every test it checks that each transaction sums to zero and each stored balance equals its ledger entries.
 
 `ConcurrencyIntegrationTest` covers the three races above and prints a summary per scenario (lines starting with `[race]`). To run only those, or a longer soak:
 
 ```powershell
 .\mvnw.cmd test -Dtest=ConcurrencyIntegrationTest "-Drace.rounds=100"
-``` GitHub Actions runs the same Maven verification on pushes and pull requests.
+```
 
-Local verification of V3 on 10 September 2026: **22 tests passed, 0 failures, 0 errors, 0 skipped**, against PostgreSQL 16. V1 and V2 also passed on GitHub Actions in pull requests #1 and #2.
+GitHub Actions runs the same Maven verification on pushes and pull requests.
+
+Local verification of V3 on 10 September 2026: **22 tests passed, 0 failures, 0 errors, 0 skipped**, against PostgreSQL 16. V1, V2 and V3 also passed on GitHub Actions in pull requests #1, #2 and #3.
 
 ## Revised roadmap
 
 - **V1:** Basic bookings, validation, cancellation, PostgreSQL integration tests, Swagger, README and CI.
-- **V2:** Credit accounts and an append-only ledger; reserve credits on booking and refund cancellation. Check each transaction, account balances and atomic rollback.
-- **V3:** Demonstrate concurrent booking/spending failures, then add consistent database locking and record measured before/after results.
+- **V2:** Credit accounts and an append only ledger; reserve credits on booking and refund cancellation. Check each transaction, account balances and atomic rollback.
+- **V3:** Demonstrate concurrent booking and spending failures, then add consistent database locking and record measured before and after results.
 - **Optional:** Idempotency, login and permissions, waitlists, scheduled settlement and hosting.
 
 Build and explain one stage at a time. The race tests show that these specific races no longer occur under the tested load; they are evidence, not proof.

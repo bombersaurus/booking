@@ -1,22 +1,22 @@
 # V1: basic bookings
 
-V1 is implemented. See README.md for startup and Swagger instructions and PLAN.md for the agreed three-stage scope.
+V1 is implemented. See README.md for startup and Swagger instructions and PLAN.md for the agreed three stage scope.
 
 The project uses Java 21 and Spring Boot 4.1.1 with springdoc 3.1.1. The old Spring Boot 3 / springdoc 2 setup instructions no longer apply.
 
 ## Implemented
 
-- ClassSession entity, repository, service, record DTOs and class-listing controller.
+- ClassSession entity, repository, service, record DTOs and class listing controller.
 - Validated class creation.
-- Booking creation with a basic capacity check and active-booking uniqueness.
+- Booking creation with a basic capacity check and active booking uniqueness.
 - Cancellation with a timestamp, repeated cancellation and rebooking.
-- ProblemDetail responses for invalid input, missing records, duplicates and full classes, and for framework errors such as unknown endpoints, non-numeric IDs and unsupported methods.
+- ProblemDetail responses for invalid input, missing records, duplicates and full classes, and for framework errors such as unknown endpoints, non numeric IDs and unsupported methods.
 - GET by ID for classes and bookings, so every 201 `Location` header can be fetched.
 - Timestamps kept at PostgreSQL's microsecond precision, so create responses match what is read back.
-- Read-only demo-user listing and booking history.
+- Read only demo user listing and booking history.
 - PostgreSQL integration tests, Swagger, README and a GitHub Actions workflow.
 
-The original Flyway baseline is unchanged. A second migration adds Carol as a third demo user, so the two-seat / three-user scenario can be demonstrated entirely through Swagger. Migration V2 is a schema sequence number, not the credit-ledger product version.
+The original Flyway baseline is unchanged. A second migration adds Carol as a third demo user, so the two seat, three user scenario can be demonstrated entirely through Swagger. Migration V2 is a schema sequence number, not the credit ledger product version.
 
 ## Definition of done
 
@@ -24,7 +24,7 @@ The original Flyway baseline is unchanged. A second migration adds Carol as a th
 - [x] Book as an existing demo user.
 - [x] Reject duplicate active bookings with 409.
 - [x] Cancel and rebook.
-- [x] Refuse a third booking for a two-seat session under sequential requests.
+- [x] Refuse a third booking for a two seat session under sequential requests.
 - [x] Run automated integration checks against PostgreSQL.
 - [x] Document the demo and configure CI.
 - [x] Run the workflow on GitHub after publishing the changes.

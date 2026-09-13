@@ -1,6 +1,4 @@
-# Latest agreed plan
-
-Source: the September 5 discussion in “Check ledger project access”, superseding the original five-version architecture.
+# Project plan
 
 ## V1: basic bookings
 
@@ -14,13 +12,8 @@ Add credit accounts and immutable credit history. Reserve credits when booking a
 
 ## V3: concurrent requests
 
-Write a reproducible race test before adding locks. Then protect capacity and prevent double-spending with consistent lock ordering. Verify duplicate prevention and atomic booking/credit rollback against real PostgreSQL. Record actual results and explain the trade-offs.
+Write a reproducible race test before adding locks. Then protect capacity and prevent double spending with consistent lock ordering. Verify duplicate prevention and atomic booking and credit rollback against real PostgreSQL. Record actual results and explain the trade-offs.
 
 ## Optional extensions
 
-Safe retries, login/permissions, waiting lists, automatic settlement and a hosted demo. These are not required to finish the core project.
-
-## Working copy
-
-The active copy is now in the Ledger workspace's `booking` folder. It was copied from the September 4 project with Git history preserved; the original folder was left untouched.
-
+Safe retries, login and permissions, waiting lists, automatic settlement and a hosted demo. These are not required to finish the core project.
