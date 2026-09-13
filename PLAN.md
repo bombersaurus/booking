@@ -12,7 +12,7 @@ Add credit accounts and immutable credit history. Reserve credits when booking a
 
 ## V3: concurrent requests
 
-Write a reproducible race test before adding locks. Then protect capacity and prevent double spending with consistent lock ordering. Verify duplicate prevention and atomic booking and credit rollback against real PostgreSQL. Record actual results and explain the trade-offs.
+Write a reproducible race test before adding locks. Then protect capacity and prevent double spending with consistent lock ordering. Verify duplicate prevention and atomic booking and credit rollback against real PostgreSQL. Record actual results and explain the tradeoffs.
 
 ## Optional extensions
 
