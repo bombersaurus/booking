@@ -16,7 +16,7 @@ public class AppConfiguration {
 
     @Bean
     OpenAPI openAPI() {
-        return new OpenAPI().info(new Info().title("Booking workspace").version("2.0")
+        return new OpenAPI().info(new Info().title("Booking workspace").version("3.0")
                 .description("Explore classes, reserve a place with credits and manage bookings. Choose an operation below to try it."));
     }
 }

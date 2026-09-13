@@ -24,6 +24,7 @@ import java.net.URI;
 import java.net.http.*;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -51,39 +52,22 @@ class BookingApiIntegrationTest {
     @BeforeEach
     void resetFixtures() {
         // This connection belongs only to the disposable test container.
-        jdbc.execute("""
-                TRUNCATE ledger_entries, credit_transactions, credit_accounts, bookings, class_sessions, users
-                RESTART IDENTITY CASCADE""");
-        jdbc.update("INSERT INTO users (email) VALUES ('alice@example.com'), ('bob@example.com'), ('carol@example.com')");
+        TestDatabase.reset(jdbc);
+        for (String member : List.of("alice", "bob", "carol")) {
+            TestDatabase.addMember(jdbc, member + "@example.com", 5);
+        }
         jdbc.update("""
                 INSERT INTO class_sessions (name, starts_at, capacity, credit_cost) VALUES
                 ('Spin', now() + interval '2 days', 10, 1),
                 ('Yoga', now() + interval '3 days', 20, 1),
                 ('HIIT', now() + interval '4 days', 8, 2)
                 """);
-        // Mirror migration V3: system accounts, one account per member and a 5 credit grant each.
-        jdbc.update("INSERT INTO credit_accounts (kind) VALUES ('ISSUED'), ('RESERVED')");
-        jdbc.update("INSERT INTO credit_accounts (user_id, kind) SELECT id, 'MEMBER' FROM users ORDER BY id");
-        Long issued = jdbc.queryForObject("SELECT id FROM credit_accounts WHERE kind = 'ISSUED'", Long.class);
-        for (Long member : jdbc.queryForList("SELECT id FROM credit_accounts WHERE kind = 'MEMBER' ORDER BY id", Long.class)) {
-            Long grant = jdbc.queryForObject("INSERT INTO credit_transactions (kind) VALUES ('GRANT') RETURNING id", Long.class);
-            jdbc.update("INSERT INTO ledger_entries (transaction_id, account_id, amount) VALUES (?, ?, -5), (?, ?, 5)",
-                    grant, issued, grant, member);
-            jdbc.update("UPDATE credit_accounts SET balance = balance - 5 WHERE id = ?", issued);
-            jdbc.update("UPDATE credit_accounts SET balance = balance + 5 WHERE id = ?", member);
-        }
     }
 
     @AfterEach
     void ledgerStaysConsistent() {
-        assertThat(jdbc.queryForObject("""
-                SELECT count(*) FROM (SELECT transaction_id FROM ledger_entries
-                GROUP BY transaction_id HAVING sum(amount) <> 0) unbalanced""", Long.class))
-                .as("transactions whose entries do not sum to zero").isZero();
-        assertThat(jdbc.queryForObject("""
-                SELECT count(*) FROM credit_accounts a WHERE a.balance <>
-                COALESCE((SELECT sum(e.amount) FROM ledger_entries e WHERE e.account_id = a.id), 0)""", Long.class))
-                .as("accounts whose stored balance differs from their ledger entries").isZero();
+        assertThat(TestDatabase.unbalancedTransactions(jdbc)).as("transactions whose entries do not sum to zero").isZero();
+        assertThat(TestDatabase.driftedAccounts(jdbc)).as("accounts whose stored balance differs from their ledger entries").isZero();
     }
 
     @Test

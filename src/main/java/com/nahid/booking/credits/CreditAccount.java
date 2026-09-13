@@ -15,8 +15,8 @@ public class CreditAccount {
 
     protected CreditAccount() {}
 
-    // V2 deliberately reads the balance, changes it in memory and writes it back.
-    // Concurrent requests can overwrite each other's update; V3 adds row locks.
+    // Only called on accounts locked by CreditService.lockInIdOrder, so reading,
+    // changing and writing back the balance cannot interleave with another transaction.
     void apply(long amount) { balance += amount; }
 
     public Long getId() { return id; }

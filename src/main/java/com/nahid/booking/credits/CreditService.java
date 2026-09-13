@@ -7,7 +7,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class CreditService {
@@ -28,13 +31,17 @@ public class CreditService {
 
     @Transactional(readOnly = true)
     public CreditStatementResponse statement(Long userId) {
-        CreditAccount account = memberAccount(userId);
-        return new CreditStatementResponse(userId, account.getBalance(), entries.statementFor(account.getId()));
+        Long accountId = memberAccountId(userId);
+        CreditAccount account = accounts.findById(accountId).orElseThrow();
+        return new CreditStatementResponse(userId, account.getBalance(), entries.statementFor(accountId));
     }
 
     @Transactional
     public CreditStatementResponse topUp(Long userId, long amount) {
-        post(TransactionKind.TOP_UP, null, systemAccount(AccountKind.ISSUED), memberAccount(userId), amount);
+        Long issued = systemAccountId(AccountKind.ISSUED);
+        Long member = memberAccountId(userId);
+        Map<Long, CreditAccount> locked = lockInIdOrder(issued, member);
+        post(TransactionKind.TOP_UP, null, locked.get(issued), locked.get(member), amount);
         return statement(userId);
     }
 
@@ -42,15 +49,19 @@ public class CreditService {
     // booking and its credits are committed or rolled back together.
     @Transactional
     public void reserve(Long userId, Long bookingId, long amount) {
-        CreditAccount member = memberAccount(userId);
-        if (member.getBalance() < amount) {
+        Long member = memberAccountId(userId);
+        Long reserved = systemAccountId(AccountKind.RESERVED);
+        Map<Long, CreditAccount> locked = lockInIdOrder(member, reserved);
+        // The balance is read under the lock, so no other transaction can spend it meanwhile.
+        if (locked.get(member).getBalance() < amount) {
             throw new ApiException(HttpStatus.CONFLICT, "Not enough credits for this class.");
         }
-        post(TransactionKind.RESERVATION, bookingId, member, systemAccount(AccountKind.RESERVED), amount);
+        post(TransactionKind.RESERVATION, bookingId, locked.get(member), locked.get(reserved), amount);
     }
 
     // Returns exactly what was reserved. Bookings made before credits existed
-    // have no reservation, so there is nothing to refund.
+    // have no reservation, so there is nothing to refund. The caller holds the
+    // booking's row lock, so two refunds of one booking cannot run at once.
     @Transactional
     public void refund(Long bookingId) {
         if (transactions.existsByBookingIdAndKind(bookingId, TransactionKind.REFUND)) {
@@ -59,9 +70,21 @@ public class CreditService {
         transactions.findByBookingIdAndKind(bookingId, TransactionKind.RESERVATION).ifPresent(reservation -> {
             LedgerEntry memberDebit = entries.findByTransactionId(reservation.getId()).stream()
                     .filter(entry -> entry.getAmount() < 0).findFirst().orElseThrow();
-            CreditAccount member = accounts.findById(memberDebit.getAccountId()).orElseThrow();
-            post(TransactionKind.REFUND, bookingId, systemAccount(AccountKind.RESERVED), member, -memberDebit.getAmount());
+            Long reserved = systemAccountId(AccountKind.RESERVED);
+            Map<Long, CreditAccount> locked = lockInIdOrder(reserved, memberDebit.getAccountId());
+            post(TransactionKind.REFUND, bookingId, locked.get(reserved), locked.get(memberDebit.getAccountId()),
+                    -memberDebit.getAmount());
         });
+    }
+
+    // Every path locks accounts in ascending id order. Two transactions that need
+    // the same accounts therefore queue in the same order and cannot deadlock.
+    private Map<Long, CreditAccount> lockInIdOrder(Long... ids) {
+        Map<Long, CreditAccount> locked = new HashMap<>();
+        for (Long id : Arrays.stream(ids).sorted().distinct().toList()) {
+            locked.put(id, accounts.findByIdForUpdate(id).orElseThrow());
+        }
+        return locked;
     }
 
     // One balanced transaction: the same amount leaves one account and enters another.
@@ -75,16 +98,16 @@ public class CreditService {
         to.apply(amount);
     }
 
-    private CreditAccount memberAccount(Long userId) {
+    private Long memberAccountId(Long userId) {
         if (!users.existsById(userId)) {
             throw ApiException.notFound("User not found.");
         }
-        return accounts.findByUserId(userId)
+        return accounts.findIdByUserId(userId)
                 .orElseThrow(() -> new IllegalStateException("User " + userId + " has no credit account."));
     }
 
-    private CreditAccount systemAccount(AccountKind kind) {
-        return accounts.findByKind(kind)
+    private Long systemAccountId(AccountKind kind) {
+        return accounts.findIdByKind(kind)
                 .orElseThrow(() -> new IllegalStateException("Missing " + kind + " credit account."));
     }
 }

@@ -46,7 +46,7 @@ public class LedgerSwaggerTheme extends SwaggerIndexPageTransformer {
                             <span class="ledger-symbol" aria-hidden="true"><i></i><i></i><i></i></span>
                             Ledger<span class="ledger-product">Booking API</span>
                           </a>
-                          <span class="ledger-version">Version 2</span>
+                          <span class="ledger-version">Version 3</span>
                         </header>
                         <div class="ledger-intro">
                           <span class="ledger-eyebrow">YOUR API PLAYGROUND</span>
