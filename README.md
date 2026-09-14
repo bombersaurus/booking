@@ -1,3 +1,5 @@
+[![CI](https://github.com/bombersaurus/booking/actions/workflows/ci.yml/badge.svg)](https://github.com/bombersaurus/booking/actions/workflows/ci.yml)
+
 # Booking and Credit Ledger API
 
 A small Java backend built in three stages to demonstrate booking transactions and credit correctness under concurrent requests.
