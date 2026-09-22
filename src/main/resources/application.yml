@@ -1,0 +1,24 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/booking}
+    username: ${DB_USERNAME:booking}
+    password: ${DB_PASSWORD:booking}
+  jpa:
+    hibernate:
+      ddl-auto: validate # Flyway creates the tables, Hibernate just checks they match
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  mvc:
+    problemdetails:
+      enabled: true # errors come back as application/problem+json
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${SERVER_PORT:8080}
