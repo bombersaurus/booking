@@ -30,7 +30,9 @@ public class BookingService {
             throw new ResponseStatusException(NOT_FOUND, "User not found.");
         }
 
-        ClassSession session = classes.findById(request.classSessionId())
+        // Lock the class so bookings for it happen one at a time. Without this,
+        // two requests can both count 4 of 5 places taken and both book.
+        ClassSession session = classes.findByIdForUpdate(request.classSessionId())
                 .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Class not found."));
 
         if (session.hasStarted()) {
