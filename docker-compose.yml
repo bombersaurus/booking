@@ -22,6 +22,3 @@ volumes:
 # Start:  docker compose up -d
 # Stop:   docker compose down
 # Reset:  docker compose down -v     (deletes the volume, Flyway reruns from scratch)
-#
-# One role. From V2 the ledger tables are protected by triggers that reject
-# UPDATE and DELETE for every role, including this one.
